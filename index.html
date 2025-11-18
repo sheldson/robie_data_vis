@@ -1,0 +1,510 @@
+<!DOCTYPE html><html lang="zh"><head><meta name="x-poe-datastore-behavior" content="local_only"><meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.jquery.com https://unpkg.com https://d3js.org https://threejs.org https://cdn.plot.ly https://stackpath.bootstrapcdn.com https://maps.googleapis.com https://cdn.tailwindcss.com https://ajax.googleapis.com https://kit.fontawesome.com https://cdn.datatables.net https://maxcdn.bootstrapcdn.com https://code.highcharts.com https://tako-static-assets-production.s3.amazonaws.com https://www.youtube.com https://fonts.googleapis.com https://fonts.gstatic.com https://pfst.cf2.poecdn.net https://puc.poecdn.net https://i.imgur.com https://wikimedia.org https://*.icons8.com https://*.giphy.com https://picsum.photos https://images.unsplash.com; frame-src 'self' https://www.youtube.com https://trytako.com; child-src 'self'; manifest-src 'self'; worker-src 'self'; upgrade-insecure-requests; block-all-mixed-content;">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nobot SPA（修复版）</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+/* 全局样式 */
+body {
+    background: radial-gradient(circle at 30% 20%, #1b1b1d, #0e0e10);
+    color: #f2f2f2;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display";
+}
+.card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    backdrop-filter: blur(22px);
+    border-radius: 18px;
+    padding: 20px;
+}
+.sidebar {
+    width: 240px;
+    height: 100vh;
+    position: fixed;
+    left: 0;
+    top: 0;
+    padding: 24px;
+    background: rgba(255,255,255,0.03);
+    border-right: 1px solid rgba(255,255,255,0.06);
+    backdrop-filter: blur(30px);
+}
+.view { display: none; }
+.view.active { display: block; }
+.pulse { animation: pulseAnim 1s infinite; }
+@keyframes pulseAnim {
+    0% {opacity:1;} 50%{opacity:.4;} 100%{opacity:1;}
+}
+tr:hover { background: rgba(255,255,255,0.04); }
+th { cursor: pointer; user-select: none; }
+</style>
+<script src="https://puc.poecdn.net/authenticated_preview_page/syncedState.3f7572448765332f3047.js"></script></head>
+
+<body class="flex">
+
+<!-- ============ 左侧导航栏 ============ -->
+<div class="sidebar">
+    <div class="text-2xl font-semibold mb-8">Nobot 后台（SPA）</div>
+    <div class="space-y-4">
+        <div class="cursor-pointer" onclick="go('#/dashboard')">📊 数据大盘</div>
+        <div class="cursor-pointer" onclick="go('#/devices')">📋 设备列表</div>
+    </div>
+</div>
+
+<!-- ============ 主内容 ============ -->
+<div class="ml-64 p-10 w-[calc(100%-16rem)]">
+
+<!-- ========== Dashboard ========== -->
+<div id="view_dashboard" class="view">
+    <div class="text-3xl font-bold mb-6">数据大盘</div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="card cursor-pointer" onclick="go('#/devices?filter=activated')">
+            <div class="text-gray-400">激活设备数</div>
+            <div class="text-4xl font-bold mt-2">421</div>
+        </div>
+        <div class="card cursor-pointer" onclick="go('#/devices?filter=online')">
+            <div class="text-gray-400">在线设备数</div>
+            <div class="text-4xl font-bold mt-2">83</div>
+        </div>
+        <div class="card cursor-pointer" onclick="go('#/devices?filter=wakeup')">
+            <div class="text-gray-400">今日被唤醒数</div>
+            <div class="text-4xl font-bold mt-2">57</div>
+        </div>
+        <div class="card cursor-pointer" onclick="go('#/devices?filter=offline')">
+            <div class="text-gray-400">关机设备数</div>
+            <div class="text-4xl font-bold mt-2">338</div>
+        </div>
+    </div>
+
+    <!-- 图表 3 列布局 -->
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+
+        <div class="card"><div class="text-lg mb-2">激活趋势</div><canvas id="chart_activate"></canvas></div>
+        <div class="card"><div class="text-lg mb-2">在线趋势</div><canvas id="chart_online"></canvas></div>
+        <div class="card"><div class="text-lg mb-2">唤醒趋势</div><canvas id="chart_wakeup"></canvas></div>
+
+        <div class="card"><div class="text-lg mb-2">对话次数</div><canvas id="chart_dialog"></canvas></div>
+        <div class="card"><div class="text-lg mb-2">互动次数</div><canvas id="chart_interact"></canvas></div>
+        <div class="card"><div class="text-lg mb-2">入睡次数</div><canvas id="chart_sleep"></canvas></div>
+
+        <div class="card"><div class="text-lg mb-2">未开机天数</div><canvas id="chart_shutdown"></canvas></div>
+
+    </div>
+</div>
+
+
+<!-- ========== 设备列表 ========== -->
+<div id="view_devices" class="view">
+
+    <div class="flex justify-between items-center mb-6">
+        <div id="devlist_title" class="text-3xl font-bold">设备列表</div>
+    </div>
+
+    <div class="card mb-6">
+        <div class="text-lg mb-4">筛选条件</div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+            <div>
+                <div class="text-gray-400 text-sm mb-1">设备 ID</div>
+                <input id="f_id" class="w-full px-3 py-2 bg-white/10 rounded-lg" placeholder="输入 ID">
+            </div>
+
+            <div>
+                <div class="text-gray-400 text-sm mb-1">在线状态</div>
+                <select id="f_online" class="w-full px-3 py-2 bg-white/10 rounded-lg">
+                    <option value="">全部</option>
+                    <option value="online">在线</option>
+                    <option value="offline">离线</option>
+                </select>
+            </div>
+
+            <div>
+                <div class="text-gray-400 text-sm mb-1">今日对话</div>
+                <select id="f_dialog" class="w-full px-3 py-2 bg-white/10 rounded-lg">
+                    <option value="">全部</option>
+                    <option value="yes">有</option>
+                    <option value="no">无</option>
+                </select>
+            </div>
+
+        </div>
+
+        <div class="mt-4 flex gap-4">
+            <button onclick="applyListFilter()" class="px-4 py-2 bg-blue-500 rounded-lg">应用筛选</button>
+            <button onclick="resetListFilter()" class="px-4 py-2 bg-white/10 rounded-lg">清除</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="text-lg mb-4">设备列表</div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable('id')">ID</th>
+                        <th onclick="sortTable('version')">版本</th>
+                        <th onclick="sortTable('activated')">激活</th>
+                        <th onclick="sortTable('online')">在线</th>
+                        <th onclick="sortTable('lastWake')">最后唤醒</th>
+                        <th onclick="sortTable('dialog')">对话轮次</th>
+                    </tr>
+                </thead>
+                <tbody id="dev_tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+
+<!-- ========== 设备详情 ========== -->
+<div id="view_detail" class="view">
+
+    <button onclick="go('#/devices')" class="mb-6 px-4 py-2 bg-white/10 rounded-lg">← 返回列表</button>
+
+    <div id="detail_title" class="text-3xl font-bold mb-6"></div>
+
+    <div class="card mb-8">
+        <div class="text-xl mb-4">设备信息</div>
+        <div id="detail_info" class="grid grid-cols-1 md:grid-cols-3 gap-4 text-gray-300 text-sm"></div>
+    </div>
+
+    <div class="card mb-8">
+        <div class="text-xl mb-4">事件时间线</div>
+        <div id="detail_timeline"></div>
+    </div>
+
+    <div class="card mb-8">
+        <div class="flex justify-between items-center mb-4">
+            <div class="text-xl">对话历史</div>
+            <select id="detail_filter" class="px-4 py-2 bg-white/10 rounded-lg">
+                <option value="">全部</option>
+                <option value="long">长对话</option>
+                <option value="error">识别错误</option>
+            </select>
+        </div>
+
+        <div id="detail_dialog_list"></div>
+    </div>
+
+</div>
+
+
+</div><!-- end main container -->
+
+
+<!-- ======================== JavaScript（修复版） ======================== -->
+<script>
+
+/****************************
+ * 1. 全局变量必须最顶部声明
+ ****************************/
+let dashboardReady = false;
+let listFiltered = [];
+let mockDevices = [];
+let mockTimeline = [];
+let mockDialogs = [];
+
+
+/****************************
+ * 2. Mock 数据初始化
+ ****************************/
+function initMockData(){
+    mockDevices = Array.from({ length: 200 }).map((_, i) => ({
+        id: "NB" + (1000 + i),
+        version: "1." + (1 + Math.floor(Math.random()*5)),
+        activated: "2025-01-" + String((i % 28) + 1).padStart(2,"0"),
+        online: Math.random() > 0.6,
+        lastWake: "2025-02-" + String((i % 25) + 1).padStart(2,"0"),
+        dialog: Math.floor(Math.random()*150),
+        dialogToday: Math.random() > 0.7
+    }));
+
+    mockTimeline = [
+        {time:"14:21", event:"唤醒"},
+        {time:"14:22", event:"对话 18 轮"},
+        {time:"14:18", event:"抚摸互动"},
+        {time:"13:50", event:"摇晃互动"},
+        {time:"13:20", event:"入睡"},
+        {time:"09:10", event:"开机"}
+    ];
+
+    mockDialogs = [
+        { id:"D1", time:"14:22", error:false, rounds:[
+            {user:"你好糯宝", bot:"你好呀~"},
+            {user:"讲故事", bot:"好呀…"}
+        ]},
+        { id:"D2", time:"10:11", error:true, rounds:[
+            {user:"你在干嘛", bot:"我…（识别错误）"}
+        ]},
+    ];
+}
+
+
+
+/****************************
+ * 3. Router（修复版）
+ ****************************/
+function go(hash){
+    location.hash = hash;
+}
+
+function router(){
+    const hash = location.hash || "#/dashboard";
+
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+
+    if (hash.startsWith("#/dashboard")){
+        document.getElementById("view_dashboard").classList.add("active");
+        initDashboardCharts();
+    }
+
+    else if (hash.startsWith("#/devices")){
+        document.getElementById("view_devices").classList.add("active");
+        loadDeviceList(hash);
+    }
+
+    else if (hash.startsWith("#/device")){
+        document.getElementById("view_detail").classList.add("active");
+        const params = new URLSearchParams(hash.split("?")[1]);
+        loadDeviceDetail(params.get("id"));
+    }
+}
+
+
+
+/****************************
+ * 4. Dashboard 图表（只初始化一次）
+ ****************************/
+function initDashboardCharts(){
+    if (dashboardReady) return;
+    dashboardReady = true;
+
+    const grid = { color:"rgba(255,255,255,0.1)" };
+    const ticks = { color:"rgba(255,255,255,0.6)" };
+
+    function makeLine(id, labels, data, color){
+        new Chart(document.getElementById(id), {
+            type:"line",
+            data:{ labels, datasets:[{
+                data, borderColor:color, backgroundColor:color+"33", tension:0.35, fill:true
+            }]},
+            options:{ scales:{x:{grid,ticks},y:{grid,ticks}}, plugins:{legend:{display:false}} }
+        });
+    }
+    function makeBar(id, labels, data, color){
+        new Chart(document.getElementById(id), {
+            type:"bar",
+            data:{ labels, datasets:[{data, backgroundColor:color+"aa"}]},
+            options:{scales:{x:{ticks},y:{grid,ticks}},plugins:{legend:{display:false}}}
+        });
+    }
+
+    makeLine("chart_activate", ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], [12,18,26,33,30,41,48], "#60a5fa");
+    makeLine("chart_online", ["0","4","8","12","16","20","24"], [40,53,61,80,75,68,55], "#34d399");
+    makeLine("chart_wakeup", ["8","10","12","14","16","18"], [12,18,30,25,20,15], "#a78bfa");
+
+    makeLine("chart_dialog", ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], [100,140,130,165,180,200,240], "#fbbf24");
+    makeBar("chart_interact", ["抚摸","摇晃","惊吓"], [132,81,19], "#f472b6");
+    makeLine("chart_sleep", ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], [40,52,49,60,65,70,73], "#93c5fd");
+    makeBar("chart_shutdown", ["1天","2-3天","4-7天","7天+"], [92,71,48,31], "#818cf8");
+}
+
+
+
+/****************************
+ * 5. 设备列表页
+ ****************************/
+function loadDeviceList(hash){
+    const params = new URLSearchParams(hash.split("?")[1]);
+    const filter = params.get("filter");
+
+    if (filter === "activated"){
+        listFiltered = [...mockDevices];
+        devlist_title.innerText = "已激活设备";
+    }
+    else if (filter === "online"){
+        listFiltered = mockDevices.filter(d=>d.online);
+        devlist_title.innerText = "在线设备";
+    }
+    else if (filter === "wakeup"){
+        listFiltered = mockDevices.filter(d=>d.dialogToday);
+        devlist_title.innerText = "今日唤醒设备";
+    }
+    else if (filter === "offline"){
+        listFiltered = mockDevices.filter(d=>!d.online);
+        devlist_title.innerText = "关机设备";
+    }
+    else {
+        listFiltered = [...mockDevices];
+        devlist_title.innerText = "设备列表";
+    }
+
+    renderDeviceTable();
+}
+
+function applyListFilter(){
+    const id = f_id.value.trim();
+    const on = f_online.value;
+    const dlg = f_dialog.value;
+
+    listFiltered = mockDevices.filter(d=>{
+        if(id && !d.id.includes(id)) return false;
+        if(on==="online" && !d.online) return false;
+        if(on==="offline" && d.online) return false;
+        if(dlg==="yes" && !d.dialogToday) return false;
+        if(dlg==="no" && d.dialogToday) return false;
+        return true;
+    });
+
+    renderDeviceTable();
+}
+
+function resetListFilter(){
+    f_id.value = "";
+    f_online.value = "";
+    f_dialog.value = "";
+    listFiltered = [...mockDevices];
+    renderDeviceTable();
+}
+
+function renderDeviceTable(){
+    dev_tbody.innerHTML = "";
+    listFiltered.forEach(d=>{
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td><span onclick="go('#/device?id=${d.id}')" class="text-blue-400 cursor-pointer">${d.id}</span></td>
+            <td>${d.version}</td>
+            <td>${d.activated}</td>
+            <td>${d.online?"在线":"离线"}</td>
+            <td>${d.lastWake}</td>
+            <td>${d.dialog}</td>
+        `;
+        dev_tbody.appendChild(tr);
+    });
+}
+
+function sortTable(key){
+    listFiltered.sort((a,b)=>a[key]>b[key]?-1:1);
+    renderDeviceTable();
+}
+
+
+
+/****************************
+ * 6. 设备详情页
+ ****************************/
+function loadDeviceDetail(id){
+    const d = mockDevices.find(x=>x.id===id);
+    if(!d){
+        detail_title.innerText = "未找到设备";
+        return;
+    }
+
+    detail_title.innerText = `设备详情：${d.id}`;
+
+    detail_info.innerHTML = `
+        <div>ID：${d.id}</div>
+        <div>版本：${d.version}</div>
+        <div>激活：${d.activated}</div>
+
+        <div>在线：${d.online?"在线":"离线"}</div>
+        <div>最后唤醒：${d.lastWake}</div>
+        <div>今日对话：${d.dialogToday?"是":"否"}</div>
+
+        <div>累计对话轮次：${d.dialog}</div>
+    `;
+
+    detail_timeline.innerHTML = mockTimeline.map(t=>`
+        <div class="mb-3">
+            <div class="text-gray-400 text-sm">${t.time}</div>
+            <div>${t.event}</div>
+        </div>
+    `).join("");
+
+    renderDetailDialogs();
+}
+
+function renderDetailDialogs(){
+    let list = [...mockDialogs];
+    const filter = detail_filter.value;
+
+    if(filter==="error") list = list.filter(d=>d.error);
+    if(filter==="long") list = list.filter(d=>d.rounds.length>10);
+
+    detail_dialog_list.innerHTML = "";
+
+    list.forEach(d=>{
+        const div = document.createElement("div");
+        div.className="dialog-item";
+        div.innerHTML = `
+            <div class="flex justify-between">
+                <div>时间：${d.time}</div>
+                <div>${d.error? "<span class='text-red-400'>识别错误</span>":""}</div>
+            </div>
+
+            <div class="text-gray-400 text-sm mb-2">轮次：${d.rounds.length}</div>
+
+            <button onclick="toggleDialog('${d.id}')" class="text-blue-400 mr-4">展开/收起</button>
+            <button onclick="replay('${d.id}')" class="text-green-400">▶ 回放</button>
+
+            <div id="dlg_${d.id}" class="hidden mt-2 pl-3 border-l border-white/10">
+                ${d.rounds.map(r=>`
+                    <div class="mt-2">
+                        <div class="dialog-user">[用户] ${r.user}</div>
+                        <div class="dialog-bot">[糯宝] ${r.bot}</div>
+                    </div>`).join("")}
+            </div>
+
+            <div id="rp_${d.id}" class="mt-3"></div>
+        `;
+        detail_dialog_list.appendChild(div);
+    });
+}
+
+detail_filter.onchange = renderDetailDialogs;
+
+function toggleDialog(id){
+    document.getElementById("dlg_"+id).classList.toggle("hidden");
+}
+
+function replay(id){
+    const session = mockDialogs.find(d=>d.id===id);
+    const box = document.getElementById("rp_"+id);
+
+    document.querySelectorAll("[id^='rp_']").forEach(b=>b.innerHTML="");
+
+    let i=0;
+    function step(){
+        if(i >= session.rounds.length) return;
+        const r = session.rounds[i];
+        box.innerHTML += `
+            <div class="mt-2 pulse">[用户] ${r.user}</div>
+            <div class="dialog-bot pulse">[糯宝] ${r.bot}</div>`;
+        i++;
+        setTimeout(step, 1000);
+    }
+    box.innerHTML = "";
+    step();
+}
+
+
+
+/****************************
+ * 7. 启动（修复版本）
+ ****************************/
+window.onload = () => {
+    initMockData();
+    router();
+};
+
+window.onhashchange = router;
+
+</script>
+
+
+
+</body></html>
